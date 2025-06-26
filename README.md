@@ -112,7 +112,7 @@ graph TB
     end
     
     subgraph "Edge Layer"
-        TRF[Traefik (Dokploy)<br/>SSL Termination & Routing]
+        TRF[Traefik (Dokploy)<br/>SSL & Routing]
     end
     
     subgraph "Application Layer"
