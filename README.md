@@ -111,8 +111,8 @@ graph TB
         PWA[Progressive Web App<br/>Offline Capabilities]
     end
     
-    subgraph "API Gateway"
-        NGINX[Nginx Reverse Proxy<br/>Rate Limiting & SSL]
+    subgraph "Edge Layer"
+        TRF[Traefik (Dokploy)<br/>SSL Termination & Routing]
     end
     
     subgraph "Application Layer"
@@ -144,10 +144,10 @@ graph TB
         VPS[VPS Server<br/>4GB RAM, 2 CPU]
     end
     
-    UI --> NGINX
-    PWA --> NGINX
-    NGINX --> NEXT
-    NGINX --> STRAPI
+    UI --> TRF
+    PWA --> TRF
+    TRF --> NEXT
+    TRF --> STRAPI
     
     NEXT --> GRAMMAR
     NEXT --> LEXICAL
@@ -540,6 +540,7 @@ sequenceDiagram
         BACKUP->>CRON: Retry backup
     end
 ```
+
 ### 5.11. Luồng giám sát hiệu năng (Performance Monitoring Flow)
 
 ```mermaid
@@ -627,6 +628,42 @@ sequenceDiagram
     API-->>UI_S: Review completed
     UI_S-->>S: Final feedback received
 ```
+
+### 5.13. Luồng triển khai CI/CD với Dokploy & GitHub
+
+```mermaid
+sequenceDiagram
+    participant DEV as Developer
+    participant GH as GitHub
+    participant DOK as Dokploy
+    participant REG as Docker Registry
+    participant SWARM as Docker Swarm
+    participant TRF as Traefik
+
+    DEV->>GH: Push code (branch = <env>)
+    note over GH: GitHub App "Dokploy" đã cài đặt<br/>quyền repo
+    GH-->>DOK: Webhook / App event (push)
+    DOK->>DOK: Xác định Application khớp branch
+    alt Tự động deploy enabled
+        DOK->>REG: Build & Push image (Nixpacks / Dockerfile)
+        REG-->>DOK: Image tag
+        DOK->>SWARM: Update service (rolling update)
+        SWARM-->>DOK: Deploy status
+        DOK-->>DEV: Slack / Discord / Email notification
+    else Branch không khớp
+        DOK-->>DEV: Bỏ qua deploy (log only)
+    end
+    SWARM-->TRF: Container running
+    DEV->>TRF: Truy cập https://app.unihub.ai
+```
+
+Giải thích chính:
+
+1. **Kết nối GitHub:** Cài GitHub App từ Dokploy, chọn repo và branch cần deploy (docs: *Configure GitHub Integration Steps*).
+2. **Tự động Deploy:** Mỗi lần push vào branch đã chọn, Dokploy sẽ tự build (hoặc kéo image) và triển khai; các branch khác không bị ảnh hưởng. Có thể tạo nhiều Application cho `development`, `staging`, `production` (docs: *Understanding Dokploy Automatic Deployments with GitHub*).
+3. **Workflow nâng cao:** Nếu muốn build bằng GitHub Actions, dùng action `dokploy/dokploy-action@v1` để gọi `application.deploy` sau khi push image (docs: *GitHub Actions Workflow to Trigger Dokploy Deployment via API*).
+4. **Thông báo:** Dokploy hỗ trợ webhook tới Slack/Discord để báo trạng thái.
+5. **Traefik:** Vẫn làm reverse-proxy SSL, không đổi.
 
 ## 6. Cấu trúc bảng dữ liệu (Database Schema)
 
