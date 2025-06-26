@@ -90,6 +90,7 @@ Mô phỏng trải nghiệm viết bài thi thật, giúp người dùng rèn lu
 | ------------------- | ----------------------------------------------------------------------- |
 | **Frontend**        | Next.js, Progressive Web App (PWA)                                      |
 | **Backend**         | Next.js (API Routes, Server Actions)                                    |
+| **Authentication**  | AuthKit (WorkOS) – Free ≤ 1M MAU                                        |
 | **CMS**             | Strapi                                                                  |
 | **AI Services**     | GPT-4.1 (nano, mini), Claude-3-haiku                                    |
 | **Cơ sở dữ liệu**    | MySQL 8.0, Redis (Cache & Sessions)                                     |
@@ -170,7 +171,8 @@ graph TB
 sequenceDiagram
     participant U as User
     participant UI as Next.js Frontend
-    participant AUTH as NextAuth.js
+    participant AUTH as AuthKit
+    participant WORKOS as WorkOS API
     participant STRAPI as Strapi Backend
     participant DB as MySQL Database
     participant REDIS as Redis Cache
@@ -178,11 +180,16 @@ sequenceDiagram
     U->>UI: Truy cập trang đăng nhập
     UI->>U: Hiển thị form đăng nhập
     
-    U->>UI: Nhập email/password
-    UI->>AUTH: Gửi credentials
-    AUTH->>STRAPI: Xác thực user
-    STRAPI->>DB: Kiểm tra user credentials
-    DB-->>STRAPI: Trả về user data
+    U->>UI: Nhập email/password (hoặc Social/Magic link)
+    UI->>AUTH: Redirect tới AuthKit
+    AUTH->>WORKOS: Xác thực & MFA
+    WORKOS-->>AUTH: user profile + auth code
+    AUTH-->>UI: Redirect callback (code)
+    UI->>STRAPI: /api/auth/workos/callback (đổi code lấy profile)
+    STRAPI->>WORKOS: Lấy user profile
+    WORKOS-->>STRAPI: profile
+    STRAPI->>DB: Upsert user record
+    DB-->>STRAPI: user data
     
     alt Đăng nhập thành công
         STRAPI-->>AUTH: User authenticated
@@ -660,3 +667,112 @@ Bảng `vocabularies` là trung tâm của tính năng sổ tay từ vựng.
 -   **IELTS Writing Scored Essays:** (`https://www.kaggle.com/datasets/mazlumi/ielts-writing-scored-essays-dataset/data`) - Nguồn tham khảo để huấn luyện hoặc tinh chỉnh các mô hình chấm điểm.
 -   **IPA Dictionary Dataset:** (`https://github.com/open-dict-data/ipa-dict`) - Dữ liệu phát âm IPA cho nhiều ngôn ngữ.
 -   **Princeton WordNet:** - Dữ liệu về quan hệ ngữ nghĩa giữa các từ (đồng nghĩa, trái nghĩa).
+
+## 8. Chiến lược SEO & Analytics
+
+Để đảm bảo Unihub không chỉ mạnh về tính năng mà còn có khả năng tiếp cận người dùng tự nhiên qua các công cụ tìm kiếm, chúng ta cần một chiến lược SEO và Analytics bài bản.
+
+### 8.1. Technical SEO
+
+Với nền tảng Next.js, Unihub có lợi thế lớn về SEO. Chiến lược sẽ tập trung vào các yếu tố sau:
+
+-   **Server-Side Rendering (SSR) & Static Site Generation (SSG):**
+    -   Sử dụng SSG cho các trang có nội dung tĩnh (giới thiệu, blog, câu hỏi thường gặp) để có tốc độ tải trang tức thì và thân thiện với crawler.
+    -   Sử dụng SSR cho các trang có nội dung động (dashboard, trang luyện tập) để đảm bảo nội dung mới nhất luôn được Google index.
+-   **Metadata & Structured Data:**
+    -   **Meta Tags:** Tự động tạo thẻ `<title>` và `<meta name="description">` độc nhất cho mỗi trang (bài luận mẫu, trang chủ đề từ vựng).
+    -   **Open Graph & Twitter Cards:** Tích hợp để tối ưu hiển thị khi chia sẻ trên mạng xã hội.
+    -   **JSON-LD Structured Data:**
+        -   Sử dụng schema `Article` cho các bài viết blog, bài luận mẫu.
+        -   Sử dụng schema `WebSite` cho trang chủ.
+        -   Có thể định nghĩa schema `EducationalOccupationalProgram` cho toàn bộ nền tảng luyện thi IELTS.
+-   **Metadata API (Next.js App Router):**
+    -   Áp dụng `export const metadata` hoặc `generateMetadata()` trong `layout.tsx`/`page.tsx` để sinh tự động `<title>`, `<meta name="description">`, `robots`, `canonical`, `alternates` (hreflang) và thẻ xác minh Search Console. Thay thế hoàn toàn cho `next/head`.
+-   **Sitemap & Robots.txt:**
+    -   Tự động tạo `sitemap.xml` để liệt kê tất cả các trang quan trọng, giúp Google khám phá nội dung hiệu quả.
+    -   Cấu hình `robots.txt` để chặn các trang không cần thiết (trang cài đặt cá nhân, trang admin).
+    -   Sử dụng thư viện `next-sitemap` (thêm script `"postbuild": "next-sitemap"`) và biến môi trường `NEXT_PUBLIC_SITE_URL` để sinh file sitemap và robots tự động trong quá trình CI/CD.
+-   **Internal Linking:**
+    -   Xây dựng chiến lược liên kết nội bộ chặt chẽ, ví dụ: từ bài luận mẫu liên kết đến các từ vựng đã dùng trong bài.
+-   **SEO Data (Strapi CMS):**
+    -   Tạo component `shared.seo` với các trường `metaTitle`, `metaDescription`, `keywords`, `canonicalURL`, `metaRobots`, `metaSocial[]`. Khi truy vấn frontend cần `populate[0]=seo&populate[1]=seo.metaSocial` để đồng bộ dữ liệu SEO.
+
+### 8.2. Google Analytics & Search Console
+
+-   **Google Analytics 4 (GA4):**
+    -   Tích hợp GA4 sử dụng `@next/third-parties/google` để theo dõi hành vi người dùng một cách hiệu quả và tối ưu cho Next.js App Router.
+    -   Tất cả các sự kiện (events) được định nghĩa ở mục dưới sẽ được gửi lên GA4.
+-   **Google Search Console (SC):**
+    -   Xác thực website với SC để theo dõi hiệu suất tìm kiếm.
+    -   Submit `sitemap.xml` và theo dõi tình trạng index.
+    -   Phân tích các từ khóa mà người dùng sử dụng để tìm đến Unihub.
+
+### 8.3. Chiến lược theo dõi sự kiện (Event Tracking)
+
+Để đánh giá hiệu quả sản phẩm và hành vi người dùng, chúng ta sẽ triển khai một hệ thống theo dõi sự kiện chi tiết.
+
+**Quy tắc đặt tên:** `object_verb` (ví dụ: `essay_submitted`).
+
+| Tính năng              | Tên sự kiện (Event Name)              | Thuộc tính (Properties)                                                                 | Mục đích đánh giá                                                                  |
+| ----------------------- | ------------------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **User Lifecycle**      | `user_signed_up`                      | `method: "email" \| "google"`                                                           | Đo lường kênh đăng ký hiệu quả.                                                   |
+|                         | `user_logged_in`                      | `method: "email" \| "google"`                                                           | Theo dõi tần suất quay lại của người dùng.                                          |
+| **Vocabulary**          | `vocabulary_word_added`               | `source: "manual" \| "lookup"`                                                          | Mức độ tương tác với tính năng sổ tay.                                            |
+|                         | `vocabulary_word_practiced`           | `word_id`, `is_correct: boolean`                                                        | Hiệu quả của việc học từ vựng.                                                    |
+| **Practice**            | `practice_session_started`            | `type: "sentence" \| "paragraph"`, `source: "vocabulary" \| "random"`                   | Tính năng luyện tập nào được ưa chuộng.                                            |
+|                         | `practice_hint_used`                  | `practice_id`                                                                           | Mức độ khó của câu hỏi, nhu cầu trợ giúp.                                          |
+|                         | `practice_submission_completed`       | `practice_id`, `score: number`                                                          | Tỷ lệ hoàn thành và điểm số trung bình.                                            |
+| **Essay**               | `essay_submitted`                     | `essay_id`, `word_count: number`, `time_taken_seconds: number`                          | Tần suất nộp bài, thời gian hoàn thành.                                            |
+|                         | `essay_score_viewed`                  | `essay_id`, `overall_band: number`                                                      | Người dùng có quan tâm đến kết quả chấm điểm không?                               |
+|                         | `essay_feedback_compared`             | `essay_id`                                                                              | Mức độ tương tác với feedback của AI.                                              |
+| **Gamification**        | `daily_quest_completed`               | `quest_name`                                                                            | Mức độ hiệu quả của hệ thống nhiệm vụ.                                             |
+|                         | `streak_achieved`                     | `streak_days: number`                                                                   | Khả năng giữ chân người dùng.                                                     |
+| **PWA**                 | `pwa_installed`                       |                                                                                         | Tỷ lệ người dùng cài đặt PWA.                                                     |
+|                         | `app_used_offline`                    |                                                                                         | Mức độ sử dụng app khi không có mạng.                                             |
+
+### 8.4. Checklist triển khai (Dev & Ops)
+
+- **Biến môi trường mẫu (.env):**
+    ```env
+    NEXT_PUBLIC_SITE_URL=https://unihub.ai
+    NEXT_PUBLIC_GA_ID=G-XXXXXXXXXX
+    STRAPI_API_URL=https://cms.unihub.ai
+    STRAPI_TOKEN=YOUR_STRAPI_TOKEN
+    ```
+
+- **Thiết lập sitemap:**
+    1. `npm i next-sitemap -D`
+    2. Tạo `next-sitemap.config.mjs`:
+        ```js
+        export default {
+          siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+          generateRobotsTxt: true,
+        };
+        ```
+    3. Thêm script build: `"postbuild": "next-sitemap"`.
+
+- **Tích hợp GA4:**
+    - Thêm `<GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />` trong `app/providers.tsx`, chỉ render khi `process.env.NODE_ENV === "production"`.
+    - Sử dụng hằng `EVENTS` (định nghĩa ở trên) để gọi `gtag('event', EVENTS.xxx)` trong client components.
+
+- **Ánh xạ dữ liệu SEO từ Strapi → Metadata API:**
+    ```ts
+    export const mapSeo = (seo) => ({
+      title: seo.metaTitle,
+      description: seo.metaDescription,
+      alternates: { canonical: seo.canonicalURL },
+      openGraph: {
+        title: seo.metaTitle,
+        description: seo.metaDescription,
+        images: seo.metaSocial?.map((s) => ({ url: s.image?.url, alt: s.title })),
+      },
+    });
+    ```
+
+- **Hiệu năng & Core Web Vitals mục tiêu:**
+    - LCP < 2.5s (mobile), CLS < 0.1, FID/FCP đạt mức "Good" theo Lighthouse.
+    - Kiểm tra định kỳ bằng Vercel Analytics hoặc Google PageSpeed.
+
+- **Kiểm thử SEO:**
+    - Rich Results Test cho bài blog.
+    - ScreamingFrog/Ahrefs để kiểm tra canonical/hreflang/404.
